@@ -6,9 +6,13 @@ export default {
       return new Response("Not Found", { status: 404 });
     }
 
-    const BASE_URL = `${url.protocol}//${url.host}`;
-    const KV_KEY = `cached_sitemap_xml_${url.host}`;
-    const KV_META = `cached_sitemap_meta_${url.host}`; 
+    // 优先使用环境变量配置的站点 URL，如果没有配置则动态使用来访请求的域名
+    const BASE_URL = env.SITE_URL ? env.SITE_URL.replace(/\/$/, '') : `${url.protocol}//${url.host}`;
+    
+    // 缓存键名也根据实际采用的域名来隔离，避免多环境缓存混淆
+    const targetHost = BASE_URL.replace(/^https?:\/\//, '');
+    const KV_KEY = `cached_sitemap_xml_${targetHost}`;
+    const KV_META = `cached_sitemap_meta_${targetHost}`; 
 
     try {
       // 核心修改：不仅获取数量(count)，同时获取所有文章中的最后更新时间(last_update)

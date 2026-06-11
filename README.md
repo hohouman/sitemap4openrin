@@ -8,6 +8,7 @@
 - **状态精准过滤**：自动过滤草稿（`draft = 1`）和隐藏文章（`listed = 0`），确保隐私与未完稿内容不会泄露给搜索引擎。
 - **智能 KV 缓存**：引入高级缓存指纹机制（`COUNT(*)` + `MAX(updated_at)`），只在文章发生**新增、删除或修改**时才触发缓存重建，大大节省了 D1 的读取请求压力。
 - **完美兼容 Rin 的路由生态**：自动识别并优先使用文章的自定义别名（`alias`），若无别名则无缝降级使用 `id`，保持与 Rin 前端完全一致的持久化链接。
+- **灵活的域名适配**：支持通过 `SITE_URL` 环境变量强行指定生成的域名，未指定时则智能采取来访请求的域名生成 Sitemap 源地址。
 
 ---
 
@@ -35,7 +36,12 @@
    - Variable name (变量名): `DB` （**注意：必须全大写 `DB`，与 Rin 的官方规范保持一致**）
    - D1 database: 下拉选择你部署 openRin 时使用的那个主要数据库（通常名为 `rin`）。
 
-### 4. 接管 Sitemap 路由
+### 4. (可选) 配置指定域名
+如果你的 Worker 使用了多个域名或自带 workers.dev 域名，为了防止生成的 sitemap 源地址产生混乱，**强烈建议**在 **Settings** -> **Variables and Secrets** 处添加一个环境变量：
+   - Variable name: `SITE_URL`
+   - Value: `https://blog.yourdomain.com` （填入你的真实博客主页地址即可）
+
+### 5. 接管 Sitemap 路由
 1. 依然在 Worker 页面，进入 **Settings** 选项卡 -> **Domains & Routes**。
 2. 点击 **Add route**。
 3. 在 Route 一栏输入你希望生效的地址，例如：`blog.yourdomain.com/sitemap.xml`。
@@ -63,6 +69,10 @@ database_id = "填入你的d1-uuid"
 [[kv_namespaces]]
 binding = "SITEMAP_KV"
 id = "填入你的kv-uuid"
+
+# 3. （可选）如果你希望确保生成的页面域名万无一失
+[vars]
+SITE_URL = "https://blog.yourdomain.com"
 ```
 
 1. 执行 `wrangler deploy` 推送到 Cloudflare。
