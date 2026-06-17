@@ -72,7 +72,7 @@ export default {
 
       // 动态文章页面
       for (const row of results) {
-        const path = row.alias ? `/feed/${row.alias}` : `/feed/${row.id}`;
+        const path = row.alias ? `/${row.alias}` : `/feed/${row.id}`;
         const postUrl = `${BASE_URL}${path}`;
         
         // Rin 数据库储存的时间戳(基于 unixepoch)是秒级的
