@@ -30,7 +30,7 @@ export default {
       // 定义公共基础响应头，直接附加到所有返回响应中
       const baseHeaders = {
         "Content-Type": "application/xml; charset=utf-8",
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": "public, max-age=21600",
         "ETag": eTag,
         "Last-Modified": lastModifiedDate
       };
