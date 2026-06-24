@@ -18,8 +18,18 @@ export default {
         "SELECT COUNT(*) as count, MAX(updated_at) as last_update FROM feeds WHERE listed = 1 AND draft = 0"
       ).first();
       
-      // 生成缓存指纹：格式为 "数量_最后更新时间戳"
-      const currentCacheFingerprint = `${metaRes.count}_${metaRes.last_update || 0}`;
+      // 获取 moments 表最后更新时间
+      const momentsRes = await env.DB.prepare(
+        "SELECT MAX(updated_at) as last_update FROM moments"
+      ).first();
+      
+      // 获取 friends 表最后更新时间
+      const friendsRes = await env.DB.prepare(
+        "SELECT MAX(updated_at) as last_update FROM friends"
+      ).first();
+      
+      // 生成缓存指纹：包含文章、动态、友链的最后更新时间
+      const currentCacheFingerprint = `${metaRes.count}_${metaRes.last_update || 0}_${momentsRes.last_update || 0}_${friendsRes.last_update || 0}`;
 
       // --- 构造 ETag 和 Last-Modified 头 ---
       const eTag = `"${currentCacheFingerprint}"`;
@@ -57,25 +67,41 @@ export default {
         "SELECT id, alias, updated_at, created_at FROM feeds WHERE listed = 1 AND draft = 0 ORDER BY created_at DESC"
       ).all();
 
+      // 时间格式化辅助函数
+      const formatLastMod = (timestamp) => {
+        if (!timestamp) return null;
+        return new Date(timestamp * 1000).toISOString().split('T')[0];
+      };
+      
+      const feedsLastMod = formatLastMod(metaRes.last_update);
+      const momentsLastMod = formatLastMod(momentsRes.last_update);
+      const friendsLastMod = formatLastMod(friendsRes.last_update);
+      
       let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
       xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
       
-      // 首页
-      xml += `  <url>\n    <loc>${BASE_URL}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
+      // 首页 - 使用文章最后更新时间
+      xml += `  <url>\n    <loc>${BASE_URL}/</loc>\n`;
+      if (feedsLastMod) xml += `    <lastmod>${feedsLastMod}</lastmod>\n`;
+      xml += `    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
       
       // ----------------- 固定界面 -----------------
-      const fixedPages = ['/timeline', '/moments', '/hashtags', '/friends', '/about'];
+      // 每个页面对应不同的 lastmod 来源
+      const fixedPages = [
+        { path: '/timeline', lastmod: feedsLastMod },
+        { path: '/moments', lastmod: momentsLastMod },
+        { path: '/hashtags', lastmod: feedsLastMod },
+        { path: '/friends', lastmod: friendsLastMod }
+      ];
       for (const page of fixedPages) {
-        xml += `  <url>\n    <loc>${BASE_URL}${page}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n`;
+        xml += `  <url>\n    <loc>${BASE_URL}${page.path}</loc>\n`;
+        if (page.lastmod) xml += `    <lastmod>${page.lastmod}</lastmod>\n`;
+        xml += `    <changefreq>weekly</changefreq>\n    <priority>0.9</priority>\n  </url>\n`;
       }
       // ------------------------------------------------
 
       // 动态文章页面
       for (const row of results) {
-        // 如果文章别名是 about，则跳过
-        if (row.alias === 'about') {
-          continue;
-        }
         const path = row.alias ? `/${row.alias}` : `/feed/${row.id}`;
         const postUrl = `${BASE_URL}${path}`;
         
