@@ -11,29 +11,21 @@ export default {
     const KV_KEY = "cached_sitemap_xml";
     const KV_META = "cached_sitemap_meta"; 
     try {
-      // 核心修改：获取数量(count)和所有文章中的最后更新时间(last_update)
-      const metaRes = await env.DB.prepare(
-        "SELECT COUNT(*) as count, MAX(updated_at) as last_update FROM feeds WHERE draft = 0"
-      ).first();
-      
-      // 获取 moments 表最后更新时间
-      const momentsRes = await env.DB.prepare(
-        "SELECT MAX(updated_at) as last_update FROM moments"
-      ).first();
-      
-      // 获取 friends 表最后更新时间
-      const friendsRes = await env.DB.prepare(
-        "SELECT MAX(updated_at) as last_update FROM friends"
-      ).first();
-      
-      // 获取标签相关的最后更新时间（关联标签的公开文章的最后更新时间）
-      const hashtagsMetaRes = await env.DB.prepare(
-        `SELECT MAX(f.updated_at) as last_update, COUNT(DISTINCT h.id) as count
-         FROM hashtags h
-         JOIN feed_hashtags fh ON h.id = fh.hashtag_id
-         JOIN feeds f ON fh.feed_id = f.id
-         WHERE f.draft = 0`
-      ).first();
+      // 并行执行缓存指纹所需的所有查询（方案2优化）
+      const [metaRes, momentsRes, friendsRes] = await Promise.all([
+        // 获取文章数量和最后更新时间
+        env.DB.prepare(
+          "SELECT COUNT(*) as count, MAX(updated_at) as last_update FROM feeds WHERE draft = 0"
+        ).first(),
+        // 获取 moments 表最后更新时间
+        env.DB.prepare(
+          "SELECT MAX(updated_at) as last_update FROM moments"
+        ).first(),
+        // 获取 friends 表最后更新时间
+        env.DB.prepare(
+          "SELECT MAX(updated_at) as last_update FROM friends"
+        ).first()
+      ]);
       
       // 生成缓存指纹：包含文章数量、文章最后更新时间、动态最后更新时间、友链最后更新时间
       const currentCacheFingerprint = `${metaRes.count}_${metaRes.last_update || 0}_${momentsRes.last_update || 0}_${friendsRes.last_update || 0}`;
@@ -64,21 +56,6 @@ export default {
           });
         }
       }
-      // 查询所有公开且非草稿的文章
-      const { results } = await env.DB.prepare(
-        "SELECT id, alias, updated_at, created_at FROM feeds WHERE draft = 0 ORDER BY created_at DESC"
-      ).all();
-      
-      // 查询所有标签及其关联公开文章的最后更新时间
-      const { results: hashtagResults } = await env.DB.prepare(
-        `SELECT h.id, h.name, MAX(f.updated_at) as last_update
-         FROM hashtags h
-         JOIN feed_hashtags fh ON h.id = fh.hashtag_id
-         JOIN feeds f ON fh.feed_id = f.id
-         WHERE f.draft = 0
-         GROUP BY h.id, h.name
-         ORDER BY h.name`
-      ).all();
       
       // 时间格式化辅助函数
       const formatLastMod = (timestamp) => {
@@ -89,7 +66,24 @@ export default {
       const feedsLastMod = formatLastMod(metaRes.last_update);
       const momentsLastMod = formatLastMod(momentsRes.last_update);
       const friendsLastMod = formatLastMod(friendsRes.last_update);
-      const hashtagsLastMod = formatLastMod(hashtagsMetaRes.last_update);
+      
+      // 并行执行文章查询和标签查询（方案3优化）
+      const [{ results }, { results: hashtagResults }] = await Promise.all([
+        // 查询所有公开且非草稿的文章
+        env.DB.prepare(
+          "SELECT id, alias, updated_at, created_at FROM feeds WHERE draft = 0 ORDER BY created_at DESC"
+        ).all(),
+        // 查询所有标签及其关联公开文章的最后更新时间
+        env.DB.prepare(
+          `SELECT h.id, h.name, MAX(f.updated_at) as last_update
+           FROM hashtags h
+           JOIN feed_hashtags fh ON h.id = fh.hashtag_id
+           JOIN feeds f ON fh.feed_id = f.id
+           WHERE f.draft = 0
+           GROUP BY h.id, h.name
+           ORDER BY h.name`
+        ).all()
+      ]);
       
       let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
       xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
