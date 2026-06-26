@@ -20,7 +20,7 @@ export default {
     try {
       // 并行执行缓存指纹所需的所有查询
       const [metaRes, momentsRes, friendsRes] = await Promise.all([
-        // 获取文章数量和最后更新时间
+        // 获取文章数量和最后更新时间（用于缓存指纹）
         env.DB.prepare(
           "SELECT COUNT(*) as count, MAX(updated_at) as last_update FROM feeds WHERE draft = 0"
         ).first(),
@@ -89,14 +89,14 @@ export default {
           "SELECT id, alias, updated_at, created_at FROM feeds WHERE draft = 0 ORDER BY created_at DESC"
         ).all(),
         // 查询所有标签及其关联公开文章的最后更新时间
+        // 优化说明：去掉 ORDER BY 减少排序开销；去掉 h.id（代码中未使用）
         env.DB.prepare(
-          `SELECT h.id, h.name, MAX(f.updated_at) as last_update
+          `SELECT h.name, MAX(f.updated_at) as last_update
            FROM hashtags h
            JOIN feed_hashtags fh ON h.id = fh.hashtag_id
            JOIN feeds f ON fh.feed_id = f.id
            WHERE f.draft = 0
-           GROUP BY h.id, h.name
-           ORDER BY h.name`
+           GROUP BY h.id, h.name`
         ).all()
       ]);
       
